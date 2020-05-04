@@ -1,7 +1,7 @@
 'use strict';
 import PropTypes from 'prop-types';
-import React, {Component} from 'react';
-import { View, PanResponder, Animated } from 'react-native';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { View, PanResponder } from 'react-native';
 import isValidSwipe from '../utils/isValidSwipe';
 
 const directions = {
@@ -64,39 +64,49 @@ const swipeable = ({
     return false;
   }
 
-  return class extends Component {
+  function Swipeable(props) {
+    const {
+      onSwipeBegin,
+      onSwipe,
+      onSwipeEnd,
+      swipeDecoratorStyle,
+      disabled,
+      ...baseComponentProps
+    } = props;
 
-    static propTypes = propTypes;
+    const propsRef = useRef(props);
+    const swipeDetected = useRef(false);
+    const velocityProp = useRef(null);
+    const distanceProp = useRef(null);
+    const swipeDirection = useRef(null);
 
-    constructor(props, context) {
-      super(props, context);
+    const [swipe, setSwipe] = useState(() => ({ direction: null, distance: 0, velocity: 0}));
 
-      this.state = {
-        swipe: {
-          direction: null,
-          distance: 0,
-          velocity: 0
-        }
-      };
+    const handleTerminationAndRelease = useCallback(() => {
+      if (swipeDetected.current) {
+        const { onSwipeEnd } = propsRef.current;
+        onSwipeEnd && onSwipeEnd({ // eslint-disable-line no-unused-expressions
+          direction: swipeDirection.current
+        });
+      }
 
-      this.swipeDetected = false;
-      this.velocityProp = null;
-      this.distanceProp = null;
-      this.swipeDirection = null;
-    }
+      swipeDetected.current = false;
+      velocityProp.current = null;
+      distanceProp.current = null;
+      swipeDirection.current = null;
+    }, []);
 
-    componentWillMount() {
-      this.panResponder = PanResponder.create({
-
+    const [panResponder] = useState(() =>
+      PanResponder.create({
         onMoveShouldSetPanResponder: (evt, gestureState) => {
           return shouldRespondToGesture(evt, gestureState);
         },
 
         onPanResponderMove: (evt, gestureState) => {
-          const {dx, dy, vx, vy} = gestureState;
-          const { onSwipeBegin, onSwipe } = this.props;
+          const { dx, dy, vx, vy } = gestureState;
+          const { onSwipeBegin, onSwipe } = propsRef.current;
 
-          if (!continuous && this.swipeDetected) {
+          if (!continuous && swipeDetected.current) {
             return;
           }
 
@@ -104,7 +114,7 @@ const swipeable = ({
           let validHorizontal = false;
           let validVertical = false;
 
-          if (!this.swipeDetected) {
+          if (!swipeDetected.current) {
             initialDetection = true;
 
             validHorizontal = checkHorizontal && isValidSwipe(
@@ -115,36 +125,36 @@ const swipeable = ({
             );
 
             if (validHorizontal) {
-              this.velocityProp = 'vx';
-              this.distanceProp = 'dx';
+              velocityProp.current = 'vx';
+              distanceProp.current = 'dx';
 
               if ((horizontal || left) && dx < 0) {
-                this.swipeDirection = directions.SWIPE_LEFT;
+                swipeDirection.current = directions.SWIPE_LEFT;
               } else if ((horizontal || right) && dx > 0) {
-                this.swipeDirection = directions.SWIPE_RIGHT;
+                swipeDirection.current = directions.SWIPE_RIGHT;
               }
             } else if (validVertical) {
-              this.velocityProp = 'vy';
-              this.distanceProp = 'dy';
+              velocityProp.current = 'vy';
+              distanceProp.current = 'dy';
 
               if ((vertical || up) && dy < 0) {
-                this.swipeDirection = directions.SWIPE_UP;
+                swipeDirection.current = directions.SWIPE_UP;
               } else if ((vertical || down) && dy > 0) {
-                this.swipeDirection = directions.SWIPE_DOWN;
+                swipeDirection.current = directions.SWIPE_DOWN;
               }
             }
 
-            if (this.swipeDirection) {
-              this.swipeDetected = true;
+            if (swipeDirection.current) {
+              swipeDetected.current = true;
             }
           }
 
-          if (this.swipeDetected) {
-            const distance = gestureState[this.distanceProp];
-            const velocity = gestureState[this.velocityProp];
+          if (swipeDetected.current) {
+            const distance = gestureState[distanceProp.current];
+            const velocity = gestureState[velocityProp.current];
 
             const swipeState = {
-              direction: this.swipeDirection,
+              direction: swipeDirection.current,
               distance,
               velocity
             };
@@ -155,58 +165,35 @@ const swipeable = ({
               onSwipe && onSwipe(swipeState); // eslint-disable-line no-unused-expressions
             }
 
-            if (setGestureState) {
-              this.setState({
-                swipe: swipeState
-              });
-            }
+            if (setGestureState) setSwipe(swipeState)
           }
         },
 
         onPanResponderTerminationRequest: () => true,
-        onPanResponderTerminate: this.handleTerminationAndRelease,
-        onPanResponderRelease: this.handleTerminationAndRelease
-      });
-    }
+        onPanResponderTerminate: handleTerminationAndRelease,
+        onPanResponderRelease: handleTerminationAndRelease
+      })
+    );
 
-    handleTerminationAndRelease = () => {
-      if (this.swipeDetected) {
-        const { onSwipeEnd } = this.props;
-        onSwipeEnd && onSwipeEnd({ // eslint-disable-line no-unused-expressions
-          direction: this.swipeDirection
-        });
-      }
+    useEffect(() => {
+      propsRef.current = props;
+    });
 
-      this.swipeDetected = false;
-      this.velocityProp = null;
-      this.distanceProp = null;
-      this.swipeDirection = null;
-    }
+    const style = [
+      {alignSelf: 'flex-start'},
+      swipeDecoratorStyle
+    ];
 
-    render() {
-      const {
-        onSwipeBegin,
-        onSwipe,
-        onSwipeEnd,
-        swipeDecoratorStyle,
-        disabled,
-        ...props
-      } = this.props;
-
-      const style = [
-        {alignSelf: 'flex-start'},
-        swipeDecoratorStyle
-      ];
-
-      const state = setGestureState ? this.state : null;
-
-      return (
-        <View {...(disabled ? {} : this.panResponder.panHandlers)} style={style}>
-          <BaseComponent {...props} {...state} />
-        </View>
-      );
-    }
-  };
+    return (
+      <View {...(!disabled && panResponder.panHandlers)} style={style}>
+        <BaseComponent {...baseComponentProps} {...setGestureState && { swipe }} />
+      </View>
+    );
+  }
+  Swipeable.propTypes = propTypes;
+  const MemoizedSwipeable = memo(Swipeable);
+  MemoizedSwipeable.propTypes = propTypes;
+  return MemoizedSwipeable;
 };
 
 swipeable.directions = directions;

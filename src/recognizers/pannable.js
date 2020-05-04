@@ -1,7 +1,7 @@
 'use strict';
 import PropTypes from 'prop-types';
-import React, {Component} from 'react';
-import { View, PanResponder, Animated } from 'react-native';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { PanResponder, Animated } from 'react-native';
 
 const initialState = {
   absoluteChangeX: 0,
@@ -22,42 +22,38 @@ const propTypes = {
 export default ({
   setGestureState = true
 } = {}) => BaseComponent => {
-  return class extends Component {
+  function Pannable(props) {
+    const {
+      disabled,
+      onPanBegin,
+      onPan,
+      onPanEnd,
+      resetPan,
+      panDecoratorStyle,
+      ...baseProps
+    } = props;
 
-    static propTypes = propTypes
+    const [panState, setPanState] = useState(() => initialState);
+    const propsRef = useRef(props);
+    const lastX = useRef(0);
+    const lastY = useRef(0);
+    const absoluteChangeX = useRef(0);
+    const absoluteChangeY = useRef(0);
 
-    constructor(props, context) {
-      super(props, context);
+    const handlePanResponderRelease = useCallback(() => {
+      const { onPanEnd } = propsRef.current;
+      lastX.current = absoluteChangeX.current;
+      lastY.current = absoluteChangeY.current;
+      onPanEnd && onPanEnd(); // eslint-disable-line no-unused-expressions
+    }, []);
 
-      this.lastX = 0;
-      this.lastY = 0;
-      this.absoluteChangeY = 0;
-      this.absoluteChangeX = 0;
-
-      this.state = initialState;
-    }
-
-    componentWillReceiveProps(nextProps) {
-      if (nextProps.resetPan) {
-        this.lastX = 0;
-        this.lastY = 0;
-        this.absoluteChangeY = 0;
-        this.absoluteChangeX = 0;
-
-        if (setGestureState) {
-          this.setState(initialState);
-        }
-      }
-    }
-
-    componentWillMount() {
-      this.panResponder = PanResponder.create({
-
+    const [panResponder] = useState(() =>
+      PanResponder.create({
         onStartShouldSetPanResponder: ({ nativeEvent: { touches } }, { x0, y0 }) => {
           const shouldSet = touches.length === 1;
 
           if (shouldSet) {
-            const { onPanBegin } = this.props;
+            const { onPanBegin } = propsRef.current;
             onPanBegin && onPanBegin({ // eslint-disable-line no-unused-expressions
               originX: x0,
               originY: y0
@@ -72,57 +68,53 @@ export default ({
         },
 
         onPanResponderMove: (evt, { dx, dy }) => {
-          const { onPan } = this.props;
+          const { onPan } = propsRef.current;
           const panState = {
-            absoluteChangeX: this.lastX + dx,
-            absoluteChangeY: this.lastY + dy,
+            absoluteChangeX: lastX.current + dx,
+            absoluteChangeY: lastY.current + dy,
             changeX: dx,
             changeY: dy
           };
 
           onPan && onPan(panState); // eslint-disable-line no-unused-expressions
 
-          this.absoluteChangeX = panState.absoluteChangeX;
-          this.absoluteChangeY = panState.absoluteChangeY;
-          if (setGestureState) {
-            this.setState(panState);
-          }
+          absoluteChangeX.current = panState.absoluteChangeX;
+          absoluteChangeY.current = panState.absoluteChangeY;
+          if (setGestureState) setPanState(panState);
         },
 
         onPanResponderTerminationRequest: () => true,
-        onPanResponderTerminate: this.handlePanResponderRelease,
-        onPanResponderRelease: this.handlePanResponderRelease
-      });
-    }
+        onPanResponderTerminate: handlePanResponderRelease,
+        onPanResponderRelease: handlePanResponderRelease
+      })
+    );
 
-    handlePanResponderRelease = () => {
-      const { onPanEnd } = this.props;
-      this.lastX = this.absoluteChangeX;
-      this.lastY = this.absoluteChangeY;
-      onPanEnd && onPanEnd(); // eslint-disable-line no-unused-expressions
-    }
+    useEffect(() => {
+      if (!resetPan) return;
+      lastX.current = 0;
+      lastY.current = 0;
+      absoluteChangeY.current = 0;
+      absoluteChangeX.current = 0;
+      if (setGestureState) setPanState(initialState);
+    }, [resetPan]);
 
-    render() {
-      const {
-        disabled,
-        onPanBegin,
-        onPan,
-        onPanEnd,
-        resetPan,
-        panDecoratorStyle,
-        ...props
-      } = this.props;
+    useEffect(() => {
+      propsRef.current = props;
+    });
 
-      const style = [
-        {alignSelf: 'flex-start'},
-        panDecoratorStyle,
-      ];
+    const style = [
+      {alignSelf: 'flex-start'},
+      panDecoratorStyle,
+    ];
 
-      return (
-        <Animated.View {...(disabled ? {} : this.panResponder.panHandlers)} style={style}>
-          <BaseComponent {...props} {...this.state} />
-        </Animated.View>
-      );
-    }
-  };
+    return (
+      <Animated.View {...(!disabled  && panResponder.panHandlers)} style={style}>
+        <BaseComponent {...baseProps} {...panState} />
+      </Animated.View>
+    );
+  }
+  Pannable.propTypes = propTypes;
+  const MemoizedPannable = memo(Pannable);
+  MemoizedPannable.propTypes = propTypes;
+  return MemoizedPannable;
 };
