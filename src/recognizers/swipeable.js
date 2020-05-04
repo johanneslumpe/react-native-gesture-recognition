@@ -12,6 +12,7 @@ const directions = {
 };
 
 const propTypes = {
+  disabled: PropTypes.bool,
   onSwipeBegin: PropTypes.func,
   onSwipe: PropTypes.func,
   onSwipeEnd: PropTypes.func,
@@ -34,6 +35,34 @@ const swipeable = ({
 
   const checkHorizontal = horizontal || (left || right);
   const checkVertical = vertical || (up || down);
+  // TODO: that's a rip-off from onPanResponderMove, we should
+  // extract a generic approach
+  const shouldRespondToGesture = (evt, gestureState) => {
+    const { dx, dy, vx, vy } = gestureState;
+
+    const validHorizontal = checkHorizontal && isValidSwipe(
+      vx, dy, initialVelocityThreshold, verticalThreshold
+    );
+    const validVertical = checkVertical && isValidSwipe(
+      vy, dx, initialVelocityThreshold, horizontalThreshold
+    );
+
+    if (validHorizontal) {
+      if ((horizontal || left) && dx < 0) {
+        return true;
+      } else if ((horizontal || right) && dx > 0) {
+        return true;
+      }
+    } else if (validVertical) {
+      if ((vertical || up) && dy < 0) {
+        return true;
+      } else if ((vertical || down) && dy > 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 
   return class extends Component {
 
@@ -54,17 +83,13 @@ const swipeable = ({
       this.velocityProp = null;
       this.distanceProp = null;
       this.swipeDirection = null;
-     }
+    }
 
     componentWillMount() {
       this.panResponder = PanResponder.create({
 
-        onStartShouldSetPanResponder: (evt) => {
-          return evt.nativeEvent.touches.length === 1;
-        },
-
-        onMoveShouldSetPanResponder: (evt) => {
-          return evt.nativeEvent.touches.length === 1;
+        onMoveShouldSetPanResponder: (evt, gestureState) => {
+          return shouldRespondToGesture(evt, gestureState);
         },
 
         onPanResponderMove: (evt, gestureState) => {
@@ -164,6 +189,7 @@ const swipeable = ({
         onSwipe,
         onSwipeEnd,
         swipeDecoratorStyle,
+        disabled,
         ...props
       } = this.props;
 
@@ -175,7 +201,7 @@ const swipeable = ({
       const state = setGestureState ? this.state : null;
 
       return (
-        <View {...this.panResponder.panHandlers} style={style}>
+        <View {...(disabled ? {} : this.panResponder.panHandlers)} style={style}>
           <BaseComponent {...props} {...state} />
         </View>
       );

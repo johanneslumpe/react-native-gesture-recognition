@@ -15,7 +15,8 @@ const propTypes = {
   onPan: PropTypes.func,
   onPanEnd: PropTypes.func,
   resetPan: PropTypes.bool,
-  panDecoratorStyle: PropTypes.any
+  panDecoratorStyle: PropTypes.any,
+  disabled: PropTypes.bool
 };
 
 export default ({
@@ -103,6 +104,7 @@ export default ({
 
     render() {
       const {
+        disabled,
         onPanBegin,
         onPan,
         onPanEnd,
@@ -117,7 +119,7 @@ export default ({
       ];
 
       return (
-        <Animated.View {...this.panResponder.panHandlers} style={style}>
+        <Animated.View {...(disabled ? {} : this.panResponder.panHandlers)} style={style}>
           <BaseComponent {...props} {...this.state} />
         </Animated.View>
       );
